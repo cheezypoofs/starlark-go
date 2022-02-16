@@ -41,15 +41,24 @@ import (
 // so that Int-to-Value conversions need not allocate.
 //
 // The pointer is either a *big.Int, if the value is big, or a pointer into a
-// reserved portion of the address space (smallints), if the value is small.
+// reserved portion of the address space (smallints), if the value is small
+// and the address space allocation succeeded.
 //
 // See int_generic.go for the basic representation concepts.
 type intImpl unsafe.Pointer
 
 // get returns the (small, big) arms of the union.
 func (i Int) get() (int64, *big.Int) {
-	ptr := uintptr(i.impl)
-	if ptr >= smallints && ptr < smallints+1<<32 {
+	if smallints == 0 {
+		// optimization disabled
+		if x := (*big.Int)(i.impl); isSmall(x) {
+			return x.Int64(), nil
+		} else {
+			return 0, x
+		}
+	}
+
+	if ptr := uintptr(i.impl); ptr >= smallints && ptr < smallints+1<<32 {
 		return math.MinInt32 + int64(ptr-smallints), nil
 	}
 	return 0, (*big.Int)(i.impl)
@@ -57,6 +66,11 @@ func (i Int) get() (int64, *big.Int) {
 
 // Precondition: math.MinInt32 <= x && x <= math.MaxInt32
 func makeSmallInt(x int64) Int {
+	if smallints == 0 {
+		// optimization disabled
+		return Int{intImpl(big.NewInt(x))}
+	}
+
 	return Int{intImpl(uintptr(x-math.MinInt32) + smallints)}
 }
 
@@ -66,12 +80,15 @@ func makeBigInt(x *big.Int) Int { return Int{intImpl(x)} }
 // smallints is the base address of a 2^32 byte memory region.
 // Pointers to addresses in this region represent int32 values.
 // We assume smallints is not at the very top of the address space.
+//
+// Zero means the optimization is disabled and all Ints allocate a big.Int.
 var smallints = reserveAddresses(1 << 32)
 
 func reserveAddresses(len int) uintptr {
 	b, err := unix.Mmap(-1, 0, len, unix.PROT_READ, unix.MAP_PRIVATE|unix.MAP_ANON)
 	if err != nil {
-		log.Fatalf("mmap: %v", err)
+		log.Printf("Starlark failed to allocate 4GB address space: %v. Integer performance may suffer.", err)
+		return 0 // optimization disabled
 	}
 	return uintptr(unsafe.Pointer(&b[0]))
 }
