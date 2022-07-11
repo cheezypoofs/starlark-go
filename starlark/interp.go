@@ -84,6 +84,7 @@ func (fn *Function) CallInternal(thread *Thread, args Tuple, kwargs []Tuple) (Va
 	sp := 0
 	var pc uint32
 	var result Value
+	yieldStepOffset := thread.steps
 	code := f.Code
 loop:
 	for {
@@ -94,6 +95,10 @@ loop:
 		if reason := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&thread.cancelReason))); reason != nil {
 			err = fmt.Errorf("Starlark computation cancelled: %s", *(*string)(reason))
 			break loop
+		}
+		if thread.Yield != nil && thread.yieldSteps != 0 && (thread.steps-yieldStepOffset) >= thread.yieldSteps {
+			thread.Yield(thread)
+			yieldStepOffset = thread.steps
 		}
 
 		fr.pc = pc

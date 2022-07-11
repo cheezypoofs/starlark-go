@@ -47,8 +47,14 @@ type Thread struct {
 	// See example_test.go for some example implementations of Load.
 	Load func(thread *Thread, module string) (StringDict, error)
 
+	// Yield is an optional callback that will be invoked if a yield
+	// count is specified via SetYieldExecutionSteps. Common use cases
+	// include canceling execution via Cancel or stalling execution
+	// to impose a utilization duty cycle adjustment.
+	Yield func(thread *Thread)
+
 	// steps counts abstract computation steps executed by this thread.
-	steps, maxSteps uint64
+	steps, maxSteps, yieldSteps uint64
 
 	// cancelReason records the reason from the first call to Cancel.
 	cancelReason *string
@@ -77,6 +83,15 @@ func (thread *Thread) ExecutionSteps() uint64 {
 // thread.Cancel("too many steps").
 func (thread *Thread) SetMaxExecutionSteps(max uint64) {
 	thread.maxSteps = max
+}
+
+// SetYieldExecutionSteps utilizes the abstract steps concept
+// to give the interpreter caller a chance to measure and intercede
+// in the execution rate of instructions. If the thread contains
+// a Yield callback, this count of steps will drive how often that
+// callback is called.
+func (thread *Thread) SetYieldExecutionSteps(max uint64) {
+	thread.yieldSteps = max
 }
 
 // Cancel causes execution of Starlark code in the specified thread to

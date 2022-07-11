@@ -974,6 +974,23 @@ func TestExecutionSteps(t *testing.T) {
 	}
 }
 
+func TestYieldSteps(t *testing.T) {
+	yieldCalled := false
+
+	thread := new(starlark.Thread)
+	thread.Yield = func(*starlark.Thread) {
+		yieldCalled = true
+	}
+	thread.SetYieldExecutionSteps(1)
+	_, err := starlark.ExecFile(thread, "yield.star", `x = [y*y for y in range(10)]`, starlark.StringDict{})
+	if err != nil {
+		t.Errorf("execution failed: %v", err)
+	}
+	if !yieldCalled {
+		t.Fail()
+	}
+}
+
 // TestDeps fails if the interpreter proper (not the REPL, etc) sprouts new external dependencies.
 // We may expand the list of permitted dependencies, but should do so deliberately, not casually.
 func TestDeps(t *testing.T) {
